@@ -1,5 +1,5 @@
 // release-decide の判定を、作り物のリポジトリで確かめる。外（main の先頭・前回の公開日時）は差し替える。
-//   node --test test/
+//   node --test "test/*.test.mjs"
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -21,7 +21,11 @@ function repo(steps) {
   git("config", "user.email", "test@example.com");
   for (const step of steps) {
     if (step.tag) git("tag", step.tag);
-    else git("commit", "-q", "--allow-empty", "-m", step);
+    else if (step.revertPrevious) {
+      // git revert は空のコミットを取り消せないので、git revert が書くのと同じ形のメッセージを自分で書く
+      const [sha, subject] = [git("rev-parse", "HEAD"), git("log", "-1", "--format=%s")];
+      git("commit", "-q", "--allow-empty", "-m", `Revert "${subject}"`, "-m", `This reverts commit ${sha}.`);
+    } else git("commit", "-q", "--allow-empty", "-m", step);
   }
   return { cwd, head: git("rev-parse", "HEAD"), git };
 }
@@ -88,6 +92,14 @@ describe("判定", () => {
     const schedule = await run(r, { event: "schedule" });
     assert.equal(schedule.release, true);
     assert.equal(schedule.version, "0.1.1");
+  });
+
+  it("取り消された変更（feat → revert）は人の変更に数えない", async () => {
+    const r = repo(["feat: 最初", { tag: "v0.1.0" }, "feat: 足す", { revertPrevious: true }, "fix(deps): bump x from 1 to 2"]);
+    const push = await run(r);
+    assert.equal(push.release, false);
+    assert.equal(push.reason, "deps-only");
+    assert.doesNotMatch(push.notes, /足す/);
   });
 
   it("依存の更新に人の変更が混ざっていれば、push で出す", async () => {

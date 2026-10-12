@@ -164,7 +164,10 @@ export async function decide({
   const base = { nextVersion, lastRelease, tag, notes, commits, releasable };
 
   if (event === "push") {
-    if (releasable.every(isDepsCommit)) {
+    // 依存の更新を除いた残りを、まとめて判定し直す。1 件ずつ見ると、取り消された変更（feat → revert）が残って見える。
+    // まとめて渡せば、全体の判定と同じく変更と revert の組が外れる
+    const others = commits.filter((commit) => !isDepsCommit(commit));
+    if (!(await analyzeCommits(PLUGIN_CONFIG, { ...context, commits: others, logger: silent }))) {
       return { ...base, release: false, reason: "deps-only", message: `版を上げる変更が依存の更新だけ（${releasable.length} 件）。定期便で出す` };
     }
     if (lastRelease && cooldownHours > 0) {

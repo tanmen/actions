@@ -24,7 +24,8 @@ jobs:
 
       - run: npm ci --prefix release-decide --ignore-scripts --no-audit --no-fund
 
-      - run: node --test test/
+      # Node 24 は「test/」をディレクトリではなくファイルとして読む（Node 26 は通る）。glob で渡す
+      - run: node --test "test/*.test.mjs"
 
       # action.yml の配線（checkout・npm ci・出力）を実物で通す。pull_request では出さない判定になるのが正しい
       - id: decide
