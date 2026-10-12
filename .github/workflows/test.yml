@@ -1,6 +1,8 @@
 name: Test
 
-# ブランチ保護の必須チェック（test）になるので、paths で絞らない
+# ブランチ保護の必須チェック（test）になるので、paths で絞らない。
+# dependabot の PR は、これが緑なら Kodiak が自動でマージする（.kodiak.toml）。依存の更新で壊れうるものは全部ここで通す:
+#   版の決め方とノート（単体テスト）・GitHub の API（test/github.test.mjs）・main() と出力の書き出し（実物の履歴）・action.yml の配線
 on:
   pull_request:
   push:
@@ -24,10 +26,37 @@ jobs:
 
       - run: npm ci --prefix release-decide --ignore-scripts --no-audit --no-fund
 
-      # Node 24 は「test/」をディレクトリではなくファイルとして読む（Node 26 は通る）。glob で渡す
+      # Node 24 は「test/」をディレクトリではなくファイルとして読む（Node 26 は通る）。glob で渡す。
+      # GITHUB_TOKEN を渡すと test/github.test.mjs が本物の API を通す（CI で無ければ飛ばさずに落ちる）
       - run: node --test "test/*.test.mjs"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
-      # action.yml の配線（checkout・npm ci・出力）を実物で通す。pull_request では出さない判定になるのが正しい
+      # このリポジトリの main の実物の履歴で、判定を最後まで通す（定期便として）。この PR の依存で
+      # API・版決め・ノート・GITHUB_OUTPUT への書き出しまでが動くかを見る。何も公開しない
+      - name: main の履歴で判定を最後まで通す
+        shell: bash
+        run: |
+          clone="$RUNNER_TEMP/main-clone"
+          out="$RUNNER_TEMP/decide-output.txt"
+          git clone -q --filter=blob:none "https://github.com/$GITHUB_REPOSITORY.git" "$clone"
+          : > "$out"
+          GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_WORKSPACE="$clone" GITHUB_OUTPUT="$out" \
+            node release-decide/decide.mjs
+          cat "$out"
+          grep -qxE 'release=(true|false)' "$out"
+          grep -qxE 'reason=(release|no-changes|behind)' "$out"
+          # behind（main が今まさに進んだ）は版を数える前に止まる。それ以外は前回の版が読めている
+          if ! grep -qx 'reason=behind' "$out"; then grep -qxE 'last-version=[0-9]+\.[0-9]+\.[0-9]+' "$out"; fi
+          if grep -qx 'release=true' "$out"; then
+            grep -qxE 'version=[0-9]+\.[0-9]+\.[0-9]+' "$out"
+            grep -qxE 'tag=v[0-9]+\.[0-9]+\.[0-9]+' "$out"
+            grep -q '^## ' "$out"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # action.yml の配線（checkout・setup-node・npm ci・出力）を実物で通す。pull_request では出さない判定になるのが正しい
       - id: decide
         uses: ./release-decide
 

@@ -193,11 +193,31 @@ export async function decide({
   };
 }
 
-async function github(api, token, path) {
-  const res = await fetch(`${api}${path}`, {
-    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
-  });
-  return res;
+/** GitHub とのやり取り（main の先頭・前回の公開日時）。テスト（test/github.test.mjs）が本物の API で同じものを通す */
+export function createGitHub({ api = "https://api.github.com", token, repo, cwd }) {
+  const get = (path) =>
+    fetch(`${api}${path}`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+    });
+  return {
+    async getRemoteHead(branch) {
+      const res = await get(`/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
+      if (!res.ok) throw new Error(`${branch} の先頭を引けない: ${res.status} ${await res.text()}`);
+      return (await res.json()).object.sha;
+    },
+    async getReleaseTime(lastRelease) {
+      const res = await get(`/repos/${repo}/releases/tags/${encodeURIComponent(lastRelease.gitTag)}`);
+      if (res.ok) {
+        const release = await res.json();
+        return { at: new Date(release.published_at ?? release.created_at), source: "GitHub Release" };
+      }
+      if (res.status !== 404) throw new Error(`${lastRelease.gitTag} の Release を引けない: ${res.status} ${await res.text()}`);
+      // Release が無い版（release-please から移したリポジトリの古いタグなど）。注釈付きタグなら打った日時、無ければタグのコミットの日時
+      const tagged = git(["for-each-ref", `refs/tags/${lastRelease.gitTag}`, "--format=%(taggerdate:iso-strict)"], cwd);
+      if (tagged) return { at: new Date(tagged), source: "注釈付きタグ" };
+      return { at: new Date(git(["log", "-1", "--format=%cI", lastRelease.gitHead], cwd)), source: "タグのコミットの日時（Release が無い）" };
+    },
+  };
 }
 
 function writeOutputs(file, result) {
@@ -258,23 +278,7 @@ async function main() {
     now: env.RELEASE_DECIDE_NOW ? new Date(env.RELEASE_DECIDE_NOW) : new Date(),
     repositoryUrl: `${server}/${repo}`,
     logger: { log: (...a) => console.error(...a), warn: (...a) => console.error(...a), error: (...a) => console.error(...a), success: (...a) => console.error(...a) },
-    async getRemoteHead(branch) {
-      const res = await github(api, token, `/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
-      if (!res.ok) throw new Error(`${branch} の先頭を引けない: ${res.status} ${await res.text()}`);
-      return (await res.json()).object.sha;
-    },
-    async getReleaseTime(lastRelease) {
-      const res = await github(api, token, `/repos/${repo}/releases/tags/${encodeURIComponent(lastRelease.gitTag)}`);
-      if (res.ok) {
-        const release = await res.json();
-        return { at: new Date(release.published_at ?? release.created_at), source: "GitHub Release" };
-      }
-      if (res.status !== 404) throw new Error(`${lastRelease.gitTag} の Release を引けない: ${res.status} ${await res.text()}`);
-      // Release が無い版（release-please から移したリポジトリの古いタグなど）。注釈付きタグなら打った日時、無ければタグのコミットの日時
-      const tagged = git(["for-each-ref", `refs/tags/${lastRelease.gitTag}`, "--format=%(taggerdate:iso-strict)"], cwd);
-      if (tagged) return { at: new Date(tagged), source: "注釈付きタグ" };
-      return { at: new Date(git(["log", "-1", "--format=%cI", lastRelease.gitHead], cwd)), source: "タグのコミットの日時（Release が無い）" };
-    },
+    ...createGitHub({ api, token, repo, cwd }),
   });
 
   console.error(`[release-decide] ${result.message}`);

@@ -1,7 +1,10 @@
 version: 2
 # 依存の更新は月 1 回。commit-message.prefix は省かない（省くと履歴から選ばれ、外れると必須チェック pr-title で止まる）。
+# CI（test.yml）が緑なら Kodiak が major も含めて自動でマージする（.kodiak.toml）。
 updates:
-  # release-decide が実行時に読む依存。利用側に届くので fix（版を上げて出す）
+  # release-decide が実行時に読む依存。利用側に届くので fix（版を上げて出す）。
+  # 3 つは版が噛み合わないと動かない（書式パッケージ 10 系は notes-generator 14 が同梱する writer 8 で落ちる）ので、
+  # major も含めて 1 本の PR にまとめる。片方だけ先に上がる組み合わせはテストが落ちて残り、追いついた版で通る
   - package-ecosystem: "npm"
     directory: "/release-decide"
     schedule:
@@ -10,7 +13,9 @@ updates:
       prefix: "fix(deps)"
     groups:
       semantic-release:
-        update-types: ["minor", "patch"]
+        patterns:
+          - "@semantic-release/*"
+          - "conventional-changelog-*"
 
   # release-decide の action.yml が使う action（checkout・setup-node）。利用側に届くので fix
   - package-ecosystem: "github-actions"
