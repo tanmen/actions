@@ -1,0 +1,27 @@
+version = 1
+
+[merge]
+automerge_label = "automerge"
+method = "squash"
+delete_branch_on_merge = true
+blocking_labels = ["WIP", "do-not-merge"]
+
+[merge.automerge_dependencies]
+# dependabot の更新は、必須チェック（test・pr-title）が緑なら major も含めて自動でマージする。
+# 人が差分を読んでも壊れるかは分からないので、壊れうるものは test.yml で全部通す（版の決め方とノート・GitHub の API・
+# main() と出力・action.yml の配線）。組み合わせが合わない更新（notes-generator より先に書式パッケージだけ major が上がる等）は
+# テストが落ちて PR が残る。⚠ 止める理由になるのは「落ちた check ∩ ブランチ保護の必須チェック」だけなので、
+# 必須チェックが外れると、テストが落ちていてもマージされる
+versions = ["major", "minor", "patch"]
+usernames = ["dependabot"]
+
+[merge.message]
+# squash の件名を PR タイトルにする（release-decide は main の件名から版を決め、pr-title.yml が PR タイトルを検査している）。
+# ⚠ [merge] 直下のキーを足すときは、この節より前に書く（TOML ではサブテーブルの後ろのキーはそのサブテーブルに入る）
+title = "pull_request_title"
+
+[approve]
+auto_approve_usernames = ["dependabot"]
+
+[update]
+ignored_usernames = ["dependabot"]

@@ -138,10 +138,20 @@ GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=<owner>/
 
 ```bash
 npm ci --prefix release-decide
-node --test "test/*.test.mjs"
+GITHUB_TOKEN=$(gh auth token) node --test "test/*.test.mjs"   # トークンが無いと GitHub の API のテストだけ飛ばす（CI では落ちる）
 ```
 
 このリポジトリ自身も同じ形で出す（[`.github/workflows/release.yml`](.github/workflows/release.yml)）。
+
+依存の更新（dependabot）は、[`test.yml`](.github/workflows/test.yml) が緑なら major も含めて Kodiak が自動でマージする。
+人が差分を読む代わりに、壊れうるものを全部テストで通す。
+
+| 壊れうるもの | 通しているテスト |
+| --- | --- |
+| 版の決め方・ノートの生成（プラグインの挙動） | `test/decide.test.mjs`（作り物の履歴） |
+| GitHub の API（main の先頭・前回の公開日時） | `test/github.test.mjs`（本物の API。基準は immutable な v1.0.0） |
+| `main()` と出力の書き出し | test.yml「main の履歴で判定を最後まで通す」 |
+| action.yml の配線（checkout・setup-node・npm ci） | test.yml の `uses: ./release-decide` |
 
 ## License
 
