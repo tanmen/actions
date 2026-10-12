@@ -1,0 +1,34 @@
+name: PR Title
+
+# squash の件名は PR タイトルになる（このリポジトリは squash マージだけ）。
+# 件名から版を決める道具（release-please / semantic-release）に読ませるため、PR タイトルを Conventional Commits に揃える。
+# ブランチ保護の必須チェック（pr-title）になるので、paths で絞らない。
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            chore
+            test
+            build
+            ci
+            style
+            revert
+          requireScope: false

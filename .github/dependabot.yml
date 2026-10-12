@@ -1,0 +1,29 @@
+version: 2
+# 依存の更新は月 1 回。commit-message.prefix は省かない（省くと履歴から選ばれ、外れると必須チェック pr-title で止まる）。
+updates:
+  # release-decide が実行時に読む依存。利用側に届くので fix（版を上げて出す）
+  - package-ecosystem: "npm"
+    directory: "/release-decide"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "fix(deps)"
+    groups:
+      semantic-release:
+        update-types: ["minor", "patch"]
+
+  # release-decide の action.yml が使う action（checkout・setup-node）。利用側に届くので fix
+  - package-ecosystem: "github-actions"
+    directory: "/release-decide"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "fix(deps)"
+
+  # このリポジトリの CI でしか使わないので chore（出さない）
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore(deps)"

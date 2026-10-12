@@ -1,0 +1,44 @@
+name: Test
+
+# ブランチ保護の必須チェック（test）になるので、paths で絞らない
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - run: npm ci --prefix release-decide --ignore-scripts --no-audit --no-fund
+
+      - run: node --test test/
+
+      # action.yml の配線（checkout・npm ci・出力）を実物で通す。pull_request では出さない判定になるのが正しい
+      - id: decide
+        uses: ./release-decide
+
+      - name: 判定の出力を確かめる
+        shell: bash
+        run: |
+          echo "release=$RELEASE reason=$REASON"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            test "$RELEASE" = false && test "$REASON" = event
+          else
+            test -n "$REASON"
+          fi
+        env:
+          RELEASE: ${{ steps.decide.outputs.release }}
+          REASON: ${{ steps.decide.outputs.reason }}

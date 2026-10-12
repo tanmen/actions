@@ -1,0 +1,13 @@
+{
+  "name": "release-decide",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/release-notes-generator": "14.1.1",
+    "conventional-changelog-conventionalcommits": "9.3.1"
+  }
+}
