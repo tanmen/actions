@@ -1,0 +1,51 @@
+name: Release
+
+# このリポジトリ自身も、release-decide を使う側と同じ形で出す（README の「使い方」の写し）。
+# 利用側は @v1.2.3 のように版で固定して dependabot で上げるので、出すたびに利用側へ PR が届く。
+# タグは GITHUB_TOKEN で作る。そのタグで起動するワークフローは無い（GITHUB_TOKEN が作ったイベントは run を作らない）
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 03:23 JST（毎時 0 分は混んで遅れる）
+    - cron: "23 18 * * *"
+  workflow_dispatch:
+
+# push と定期便が重なっても 1 本ずつ。先の run は main が進んでいれば何もせず、後の run がまとめて出す
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      tag: ${{ steps.decide.outputs.tag }}
+      notes: ${{ steps.decide.outputs.notes }}
+    steps:
+      # 自分自身の action を手元の版で使うため、先に取り出す（利用側は tanmen/actions/release-decide@vX.Y.Z と書くので要らない）
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./release-decide
+
+  publish:
+    needs: decide
+    if: needs.decide.outputs.version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: タグと GitHub Release を作る
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes "$NOTES"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          NOTES: ${{ needs.decide.outputs.notes }}

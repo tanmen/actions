@@ -138,7 +138,7 @@ GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=<owner>/
 
 ```bash
 npm ci --prefix release-decide
-node --test test/
+node --test "test/*.test.mjs"
 ```
 
 このリポジトリ自身も同じ形で出す（[`.github/workflows/release.yml`](.github/workflows/release.yml)）。

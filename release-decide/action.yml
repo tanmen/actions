@@ -1,0 +1,73 @@
+name: release-decide
+description: main へのマージ・定期便・手動起動のどれで起こされたかを見て、今この版を出すかを Conventional Commits から決める
+author: tanmen
+
+# 判定だけを受け持つ。ビルドと公開・タグと Release の作成は呼ぶ側のジョブが行う。
+# 中で checkout する（fetch-depth: 0）ので、判定専用のジョブで使う。権限は contents: read で足りる。
+inputs:
+  cooldown-hours:
+    description: push で即時に出すのは、前回の公開からこの時間がたっているときだけ（それ以外は定期便に回す）。0 なら待ち時間を見ない（依存の更新だけの push は 0 でも定期便に回す）
+    default: "6"
+  tag-format:
+    description: タグの形。${version} が版に置き換わる（例 site-v${version}）
+    default: v${version}
+  branch:
+    description: 出す元のブランチ
+    default: main
+  initial-version:
+    description: タグが 1 つも無いときに出す最初の版
+    default: 1.0.0
+  github-token:
+    description: main の先頭と前回の GitHub Release を引くトークン（contents read）
+    default: ${{ github.token }}
+
+outputs:
+  release:
+    description: 出すなら true、出さないなら false
+    value: ${{ steps.decide.outputs.release }}
+  version:
+    description: 出す版（例 1.2.3）。出さないなら空
+    value: ${{ steps.decide.outputs.version }}
+  tag:
+    description: 出す版のタグ（例 v1.2.3）。出さないなら空
+    value: ${{ steps.decide.outputs.tag }}
+  notes:
+    description: 前回からの変更の一覧（Markdown）。GitHub Release の本文に使う
+    value: ${{ steps.decide.outputs.notes }}
+  next-version:
+    description: 出さないときも、出すなら何になるか（cooldown・deps-only のとき）
+    value: ${{ steps.decide.outputs.next-version }}
+  last-version:
+    description: 前回の版。無ければ空
+    value: ${{ steps.decide.outputs.last-version }}
+  reason:
+    description: release / cooldown / deps-only / no-changes / behind / branch / event のどれか
+    value: ${{ steps.decide.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    # 浅い clone ではタグと履歴が欠け、前回の版を見失う。呼ぶ側に任せず、ここで全部取る
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        token: ${{ inputs.github-token }}
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+
+    # semantic-release 本体は入れない（.npmrc の legacy-peer-deps。プラグインの peer に引かれて 250 個増える）
+    - shell: bash
+      run: npm ci --prefix "$GITHUB_ACTION_PATH" --ignore-scripts --no-audit --no-fund
+
+    - id: decide
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/decide.mjs"
+      env:
+        INPUT_COOLDOWN_HOURS: ${{ inputs.cooldown-hours }}
+        INPUT_TAG_FORMAT: ${{ inputs.tag-format }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        INPUT_INITIAL_VERSION: ${{ inputs.initial-version }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}

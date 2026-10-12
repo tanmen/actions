@@ -1,0 +1,3 @@
+# Git for Windows の既定（core.autocrlf=true）で CRLF に化けないよう、全部 LF に固定する。
+# dependabot（Linux）が LF で書くので、CRLF が混ざると差分が出続ける。
+* text=auto eol=lf
