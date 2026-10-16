@@ -79,8 +79,11 @@ export function checkPaths(cwd, paths) {
 
 const rangeSince = (sinceTag) => (sinceTag ? `${sinceTag}..HEAD` : "HEAD");
 
+// paths を渡すと git log は履歴を単純化し、第 2 親と同じ中身のマージコミット（通常のマージ）を落とす。マージの件名（feat!: など）が
+// 版から消えないよう、--show-pulls で「第 1 親から見て paths に変更を持ち込んだマージ」を残す
 export function readCommits(cwd, sinceTag, paths = []) {
-  const out = execFileSync("git", ["log", "--format=%H%x1f%cI%x1f%B%x1e", rangeSince(sinceTag), ...(paths.length ? ["--", ...paths] : [])], {
+  const filter = paths.length ? ["--show-pulls", rangeSince(sinceTag), "--", ...paths] : [rangeSince(sinceTag)];
+  const out = execFileSync("git", ["log", "--format=%H%x1f%cI%x1f%B%x1e", ...filter], {
     cwd,
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,

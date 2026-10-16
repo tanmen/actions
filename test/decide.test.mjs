@@ -12,6 +12,7 @@ const dirs = [];
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 // steps: 件名（空のコミット）/ { tag } / { revertPrevious } / { m: 件名, files: [触るファイル] }
+//   / { branch: 作って移る } / { checkout: 移る } / { merge: ブランチ, m: マージの件名 }（--no-ff）
 function repo(steps) {
   const cwd = mkdtempSync(join(tmpdir(), "rd-"));
   dirs.push(cwd);
@@ -30,7 +31,10 @@ function repo(steps) {
       }
       git("add", "-A");
       git("commit", "-q", "-m", step.m);
-    } else if (step.revertPrevious) {
+    } else if (step.branch) git("checkout", "-q", "-b", step.branch);
+    else if (step.checkout) git("checkout", "-q", step.checkout);
+    else if (step.merge) git("merge", "-q", "--no-ff", "-m", step.m, step.merge);
+    else if (step.revertPrevious) {
       // git revert は空のコミットを取り消せないので、git revert が書くのと同じ形のメッセージを自分で書く
       const [sha, subject] = [git("rev-parse", "HEAD"), git("log", "-1", "--format=%s")];
       git("commit", "-q", "--allow-empty", "-m", `Revert "${subject}"`, "-m", `This reverts commit ${sha}.`);
@@ -287,6 +291,31 @@ describe("paths", () => {
     const app = await run(r, { paths: [".", ":(exclude)extension"] });
     assert.equal(app.lastRelease.gitTag, "v0.4.0");
     assert.equal(app.reason, "no-changes");
+  });
+
+  it("通常のマージで入ったマージコミットも、paths に変更を持ち込んだなら数える", async () => {
+    const r = monorepo(
+      { branch: "topic" },
+      { m: "fix: 拡張を直す", files: ["extension/a.txt"] },
+      { checkout: "main" },
+      { m: "chore: 紹介ページを整える", files: ["web/index.txt"] },
+      // マージの件名だけが破壊的変更を言う。git log の既定の単純化では、第 2 親と同じ中身なので落ちる
+      { merge: "topic", m: "feat!: 拡張の設定の形を変える (#40)" },
+      { branch: "web-topic" },
+      { m: "fix: 紹介ページの誤字", files: ["web/index.txt"] },
+      { checkout: "main" },
+      // 紹介ページだけを持ち込んだマージは、extension には数えない
+      { merge: "web-topic", m: "feat: 紹介ページに節を足す (#41)" },
+    );
+    // 同じ秒のコミットは並びが定まらないので、集合で比べる
+    const sorted = (commits) => subjects(commits).sort();
+    const extension = await run(r, { paths: ["extension"] });
+    assert.equal(extension.version, "1.0.0");
+    assert.deepEqual(sorted(extension.releasable), ["feat!: 拡張の設定の形を変える (#40)", "fix: 拡張を直す"]);
+    // paths: . は、渡さないときと同じコミットを数える
+    const all = await run(r);
+    assert.deepEqual(sorted((await run(r, { paths: ["."] })).commits), sorted(all.commits));
+    assert.equal(all.commits.length, 5);
   });
 
   it("入力は 1 行に 1 つ。前後の空白・空行・CRLF は捨て、何も残らなければ全部", () => {
