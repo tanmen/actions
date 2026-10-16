@@ -215,6 +215,9 @@ console.log(result.message, result.pathCommits ?? "");
 ' <取り出す先> $'.\n:(exclude)docs'
 ```
 
+⚠ `paths` の各行は、取り出した**その時点の木**で確かめられる。今の HEAD にあって試すコミットに無いパスを外す行（上の `:(exclude)docs` など）は、
+「当たるファイルが無い」で落ちる（[paths の書き方](#paths-の書き方)）。過去の HEAD で試すときは、その時点に在るパスの行だけに絞る。
+
 ### 開発
 
 ```bash
