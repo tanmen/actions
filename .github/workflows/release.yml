@@ -1,6 +1,6 @@
 name: Release
 
-# このリポジトリ自身も、release-decide を使う側と同じ形で出す（README の「使い方」の写し）。
+# このリポジトリ自身も release-decide で出す。README の「使い方」の形に push のきっかけを足した即時便（外のタイマーは置かない）。
 # 利用側は @v1.2.3 のように版で固定して dependabot で上げるので、出すたびに利用側へ PR が届く。
 # タグは GITHUB_TOKEN で作る。そのタグで起動するワークフローは無い（GITHUB_TOKEN が作ったイベントは run を作らない）
 on:

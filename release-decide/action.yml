@@ -17,6 +17,9 @@ inputs:
   initial-version:
     description: タグが 1 つも無いときに出す最初の版
     default: 1.0.0
+  paths:
+    description: 版の判定とノートに使うコミットを、このパスに触れたものに絞る。git の pathspec を 1 行に 1 つ（例 extension。または . と :(exclude)docs の 2 行）。空なら全部
+    default: ""
   github-token:
     description: main の先頭と前回の GitHub Release を引くトークン（contents read）
     default: ${{ github.token }}
@@ -70,4 +73,5 @@ runs:
         INPUT_TAG_FORMAT: ${{ inputs.tag-format }}
         INPUT_BRANCH: ${{ inputs.branch }}
         INPUT_INITIAL_VERSION: ${{ inputs.initial-version }}
+        INPUT_PATHS: ${{ inputs.paths }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
