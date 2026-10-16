@@ -64,7 +64,8 @@ jobs:
         shell: bash
         run: |
           out="$RUNNER_TEMP/decide-paths.json"
-          GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_WORKSPACE="$RUNNER_TEMP/main-clone" \
+          # GITHUB_OUTPUT を空にして、結果を JSON で標準出力に出させる（runner はどの段にも GITHUB_OUTPUT を渡している）
+          GITHUB_OUTPUT= GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_WORKSPACE="$RUNNER_TEMP/main-clone" \
             INPUT_TAG_FORMAT='paths-check-v${version}' INPUT_PATHS=$':(exclude)README.md\n:(exclude)LICENSE\n:(exclude).gitignore' \
             node release-decide/decide.mjs > "$out"
           node -e '
