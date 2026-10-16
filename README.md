@@ -191,6 +191,30 @@ GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=<owner>/
 
 `GITHUB_OUTPUT` が無いと、結果を JSON で標準出力に出す。入力は `INPUT_` ＋大文字の環境変数で渡す（`INPUT_TAG_FORMAT`・`INPUT_PATHS` は改行区切り）。
 
+**過去の HEAD で試す**（前回のタグからコミットが無いときに、`paths` の効きを前の履歴で比べるなど）: `decide.mjs` をそのまま回すと、
+手元の HEAD を main の先頭（API）と比べ、違えば `behind` で止まる。過去のコミットを取り出し、`decide()` を直に呼んで main の先頭にその HEAD を返す。
+前回の公開日時は `push` のときしか引かないので、`workflow_dispatch` で判定すれば API を使わない。このリポジトリの clone の最上位で回す:
+
+```bash
+git -C <その clone> worktree add --detach <取り出す先> <試すコミット>
+node --input-type=module -e '
+import { execFileSync } from "node:child_process";
+import { decide, parsePaths } from "./release-decide/decide.mjs";
+const [cwd, paths = ""] = process.argv.slice(1);
+const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+const result = await decide({
+  cwd,
+  event: "workflow_dispatch",
+  ref: "refs/heads/main",
+  paths: parsePaths(paths), // tagFormat なども、action の入力と同じ名前（キャメルケース）で渡せる
+  repositoryUrl: "https://github.com/<owner>/<repo>",
+  getRemoteHead: async () => head,
+  getReleaseTime: async () => { throw new Error("前回の公開日時は push のときだけ引く"); },
+});
+console.log(result.message, result.pathCommits ?? "");
+' <取り出す先> $'.\n:(exclude)docs'
+```
+
 ### 開発
 
 ```bash
