@@ -68,11 +68,30 @@ export function parsePaths(input) {
   return (input ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
-// 当たるファイルの無い pathspec（綴りの誤り・ディレクトリの改名）は、エラーにならず「変更なし」を出し続ける。HEAD の木で確かめて落とす。
-// :(exclude) だけの行は単独では「それ以外の全部」に当たるので、1 行ずつと全体の両方で見る（extension と :(exclude)extension の組は全体で 0 件）
+// 除外の印（長い形の :(exclude)・短い形の :! と :^）が付いた pathspec なら、印だけを外した pathspec を返す（glob・icase などほかの magic は残す）。
+// 付いていなければ null
+export function withoutExclude(pathspec) {
+  const long = /^:\(([^)]*)\)([\s\S]*)$/.exec(pathspec);
+  if (long) {
+    const magic = long[1].split(",");
+    if (!magic.includes("exclude")) return null;
+    const others = magic.filter((m) => m !== "exclude");
+    return others.length ? `:(${others.join(",")})${long[2]}` : long[2];
+  }
+  const short = /^:([/!^]*):?([\s\S]*)$/.exec(pathspec);
+  if (!short || !/[!^]/.test(short[1])) return null;
+  const others = short[1].replace(/[!^]/g, "");
+  return others ? `:${others}:${short[2]}` : short[2];
+}
+
+// 当たるファイルの無い pathspec（綴りの誤り・ディレクトリの改名）は、エラーにならず「変更なし」や「外したつもりで外れていない」を出し続ける。
+// HEAD の木で確かめて落とす。除外の行は単独で引くと「それ以外の全部」に当たって必ず通るので、印を外したパス（外す側）で引く。
+// 1 行ずつのあと全体でも見る（extension と :(exclude)extension の組は全体で 0 件）
 export function checkPaths(cwd, paths) {
   for (const pathspec of paths) {
-    if (!git(["ls-files", "--", pathspec], cwd)) throw new Error(`paths の「${pathspec}」に当たるファイルが無い（綴りとディレクトリの改名を見る）`);
+    const target = withoutExclude(pathspec) ?? pathspec;
+    if (!target) throw new Error(`paths の「${pathspec}」に外すパスが書かれていない`);
+    if (!git(["ls-files", "--", target], cwd)) throw new Error(`paths の「${pathspec}」に当たるファイルが無い（綴りとディレクトリの改名を見る）`);
   }
   if (!git(["ls-files", "--", ...paths], cwd)) throw new Error(`paths 全体で当たるファイルが無い（${paths.join(" ")}）`);
 }

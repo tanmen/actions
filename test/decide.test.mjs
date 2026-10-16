@@ -6,7 +6,17 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
-import { bump, checkPaths, decide, findLastRelease, formatTag, isDepsCommit, parsePaths, parseTagFormat } from "../release-decide/decide.mjs";
+import {
+  bump,
+  checkPaths,
+  decide,
+  findLastRelease,
+  formatTag,
+  isDepsCommit,
+  parsePaths,
+  parseTagFormat,
+  withoutExclude,
+} from "../release-decide/decide.mjs";
 
 const dirs = [];
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -332,12 +342,41 @@ describe("paths", () => {
     checkPaths(r.cwd, ["extension", "extension/", ":(exclude)web", "*.md", ...APP]);
     assert.throws(() => checkPaths(r.cwd, ["extention"]), /「extention」に当たるファイルが無い/);
     assert.throws(() => checkPaths(r.cwd, ["extension", "my dir"]), /「my dir」に当たるファイルが無い/);
-    assert.throws(() => checkPaths(r.cwd, [":(exclude)."]), /「:\(exclude\)\.」に当たるファイルが無い/);
+    assert.throws(() => checkPaths(r.cwd, [".", ":(exclude)."]), /paths 全体で当たるファイルが無い/);
     assert.throws(() => checkPaths(r.cwd, ["extension", ":(exclude)extension"]), /paths 全体で当たるファイルが無い/);
     // 魔法の綴りの誤りは git が落とす（文言はロケールで変わるので、渡した pathspec が出ることだけ見る）
     assert.throws(() => checkPaths(r.cwd, [":(exlcude)web"]), /exlcude/);
     await assert.rejects(run(r, { event: "pull_request", ref: "refs/pull/1/merge", paths: ["extention"] }), /extention/);
     assert.equal((await run(r, { event: "pull_request", ref: "refs/pull/1/merge", paths: ["extension"] })).reason, "event");
+  });
+
+  it("除外の行も、外すパスの綴りの誤りで落とす（単独で引くと「それ以外の全部」に当たって通ってしまう）", () => {
+    const r = monorepo();
+    // 実在するものを外す形は、長い形・短い形・ほかの magic と並べた形のどれも通る
+    checkPaths(r.cwd, [".", ":(exclude)web", ":!docs", ":^extension/main.txt", ":(exclude,glob)web/**", ":(icase,exclude)WEB", ":/!web"]);
+    for (const typo of [":(exclude)webb", ":!webb", ":^webb", ":(exclude,glob)webb/**", ":/!webb"]) {
+      assert.throws(() => checkPaths(r.cwd, [".", typo]), (e) => e.message.includes(`「${typo}」に当たるファイルが無い`), typo);
+    }
+    // 印だけで外すパスが無い行
+    for (const empty of [":(exclude)", ":!"]) {
+      assert.throws(() => checkPaths(r.cwd, [".", empty]), (e) => e.message.includes(`「${empty}」に外すパスが書かれていない`), empty);
+    }
+  });
+
+  it("除外の印を外すときは、ほかの magic を残す", () => {
+    const cases = {
+      ":(exclude)web": "web",
+      ":(exclude,glob)web/**": ":(glob)web/**",
+      ":(icase,exclude)WEB": ":(icase)WEB",
+      ":!web": "web",
+      ":^web": "web",
+      ":!:web": "web",
+      ":/!web": ":/:web",
+      ":!/web": ":/:web",
+      ":(exclude)": "",
+    };
+    for (const [input, expected] of Object.entries(cases)) assert.equal(withoutExclude(input), expected, input);
+    for (const plain of ["web", ".", ":(glob)web/**", ":/web", ":/", "::web", "my dir"]) assert.equal(withoutExclude(plain), null, plain);
   });
 });
 
