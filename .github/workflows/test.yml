@@ -3,6 +3,7 @@ name: Test
 # ブランチ保護の必須チェック（test）になるので、paths で絞らない。
 # dependabot の PR は、これが緑なら Kodiak が自動でマージする（.kodiak.toml）。依存の更新で壊れうるものは全部ここで通す:
 #   版の決め方とノート（単体テスト）・GitHub の API（test/github.test.mjs）・main() と出力の書き出し（実物の履歴）・action.yml の配線
+#   ・paths（runner の git の pathspec の読み方）
 on:
   pull_request:
   push:
@@ -56,19 +57,59 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      # paths を実物の履歴と runner の git で通す。どのタグにも当たらない tag-format で最初のコミットから数え、
+      # 最初のコミットだけが触ったファイルを :(exclude) で外す。外したぶん件数が減り、:(exclude) だけでも 0 件にならない
+      # （git は「それ以外の全部」から外すと読む。README の注意の裏付け）
+      - name: main の履歴で paths を通す
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/decide-paths.json"
+          GITHUB_EVENT_NAME=schedule GITHUB_REF=refs/heads/main GITHUB_WORKSPACE="$RUNNER_TEMP/main-clone" \
+            INPUT_TAG_FORMAT='paths-check-v${version}' INPUT_PATHS=$':(exclude)README.md\n:(exclude)LICENSE\n:(exclude).gitignore' \
+            node release-decide/decide.mjs > "$out"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            console.log(r.reason, r.message, JSON.stringify(r.pathCommits));
+            const c = r.pathCommits;
+            if (r.reason !== "behind" && !(c && c.matched > 0 && c.matched < c.total)) process.exit(1);
+          ' "$out"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       # action.yml の配線（checkout・setup-node・npm ci・出力）を実物で通す。pull_request では出さない判定になるのが正しい
       - id: decide
         uses: ./release-decide
 
+      # paths の配線。paths はきっかけより先に確かめるので、pull_request でも「当たらない paths で落ちる」で届いたことが分かる
+      - id: decide-paths
+        uses: ./release-decide
+        with:
+          paths: |
+            release-decide
+            :(exclude)release-decide/package-lock.json
+
+      - id: decide-bad-paths
+        continue-on-error: true # 落ちるのが正しい（ログの「当たるファイルが無い」はこの段のもの）
+        uses: ./release-decide
+        with:
+          paths: release-decide-test-no-such-path
+
       - name: 判定の出力を確かめる
         shell: bash
         run: |
-          echo "release=$RELEASE reason=$REASON"
+          echo "release=$RELEASE reason=$REASON paths: reason=$PATHS_REASON bad=$BAD_PATHS"
+          # 1 行に 1 つ（`a && b` は a の失敗で -e が効かず、後ろの行が通ると緑になる）
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            test "$RELEASE" = false && test "$REASON" = event
+            test "$RELEASE" = false
+            test "$REASON" = event
+            test "$PATHS_REASON" = event
           else
             test -n "$REASON"
+            test -n "$PATHS_REASON"
           fi
+          test "$BAD_PATHS" = failure
         env:
           RELEASE: ${{ steps.decide.outputs.release }}
           REASON: ${{ steps.decide.outputs.reason }}
+          PATHS_REASON: ${{ steps.decide-paths.outputs.reason }}
+          BAD_PATHS: ${{ steps.decide-bad-paths.outcome }}
