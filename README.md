@@ -155,7 +155,7 @@ jobs:
 | --- | --- |
 | `release` | 出すなら `true` |
 | `version` / `tag` | 出す版とタグ。出さないなら空 |
-| `notes` | 前回からの変更の一覧（Markdown） |
+| `notes` | 前回からの変更の一覧（Markdown）。各行は件名と PR・コミットのリンクだけで、本文の `#…`（`Closes #12` も）は出さない（v1.1.0 までは「closes」の参照として付いた） |
 | `next-version` | 出さないときも、出すなら何になるか（`cooldown` / `deps-only` のとき） |
 | `last-version` | 前回の版 |
 | `reason` | `release` / `cooldown` / `deps-only` / `no-changes` / `behind` / `branch` / `event` |

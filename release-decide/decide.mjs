@@ -20,6 +20,20 @@ import { generateNotes } from "@semantic-release/release-notes-generator";
 
 // pr-title.yml が検査する書式（Conventional Commits）に合わせる。semantic-release の既定の angular は `feat!:` を読めず、黙って版が上がらない
 const PLUGIN_CONFIG = { preset: "conventionalcommits" };
+// ノートにだけ使う（版の決め方には渡さない）。各行の末尾の「, closes #…」を外す。パーサーは closes・fixes などの語が無い行でも
+// 本文の `#英数字` を参照に拾い（ページの節の「#pro」・別リポジトリへの言及の「other #263」）、preset のテンプレートは参照を全部
+// 「closes」で出すので、無い issue へのリンクになる。件名の (#224) は preset の transform が件名の中でリンクにするので残る。
+// パーサーの設定（referenceActions・issuePrefixes）では止めない。参照の行で BREAKING CHANGE の本文が切れなくなり、
+// referenceActions を空にしても空白の無い行（「詳しくは#263」）は拾われ続ける
+const NOTES_CONFIG = {
+  ...PLUGIN_CONFIG,
+  writerOpts: {
+    finalizeContext: (context) => ({
+      ...context,
+      commitGroups: context.commitGroups.map((group) => ({ ...group, commits: group.commits.map((commit) => ({ ...commit, references: [] })) })),
+    }),
+  },
+};
 // dependabot の接頭辞は `fix(deps)`（または prefix: fix ＋ include: scope）。開発用の依存は `chore(deps-dev)` で、もともと版を上げない
 const DEPS_SCOPES = new Set(["deps", "deps-dev"]);
 const EVENTS = new Set(["push", "schedule", "workflow_dispatch"]);
@@ -209,7 +223,7 @@ export async function decide({
   }
   const nextVersion = lastRelease ? bump(lastRelease.version, type) : initialVersion;
   const tag = formatTag(tagFormat, nextVersion);
-  const notes = await generateNotes(PLUGIN_CONFIG, {
+  const notes = await generateNotes(NOTES_CONFIG, {
     ...context,
     lastRelease: lastRelease ?? {},
     nextRelease: { version: nextVersion, gitTag: tag, gitHead: head },

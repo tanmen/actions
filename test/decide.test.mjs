@@ -193,6 +193,60 @@ describe("判定", () => {
   });
 });
 
+describe("ノート", () => {
+  const ISSUE = "https://github.com/tanmen/example/issues/";
+  const COMMIT = "https://github.com/tanmen/example/commit/";
+  // 件名の行（件名・PR のリンク・コミットのリンク）。行ごと比べるので、末尾に「, closes …」が付けば一致しない
+  const entry = (r, ref, text, pr) => {
+    const hash = r.git("rev-parse", ref);
+    return `* ${text} ([#${pr}](${ISSUE}${pr})) ([${hash.slice(0, 7)}](${COMMIT}${hash}))`;
+  };
+
+  it("本文の `#…` を closes の参照として出さない（別リポジトリへの言及・数字でない #pro・空白の無い行）", async () => {
+    const r = repo([
+      "feat: 最初",
+      { tag: "v0.1.0" },
+      // squash の本文に子のコミットの件名が並び、その 1 つが別リポジトリの PR に触れる
+      "fix: 設定の保存を直す (#224)\n\n- fix: 2 回目で落ちる欄を直す\n- docs: 節を other #263 のマージと実物に合わせる",
+      // 紹介ページの節（#pro）を本文で指す
+      "feat(site): 比較表を足す (#58)\n\n* feat(site): 比較表を足す\n\n比較表の行と #pro 本文の両方をそちらに寄せる\n\n- #pro のカードに札を付ける",
+      "fix: 空白の無い行で触れる (#60)\n\n詳しくは#263",
+    ]);
+    const result = await run(r);
+    assert.equal(result.version, "0.2.0");
+    const lines = result.notes.split("\n");
+    for (const expected of [
+      entry(r, "HEAD~2", "設定の保存を直す", 224),
+      entry(r, "HEAD~1", "**site:** 比較表を足す", 58),
+      entry(r, "HEAD", "空白の無い行で触れる", 60),
+    ]) {
+      assert.ok(lines.includes(expected), `${expected}\n---\n${result.notes}`);
+    }
+    assert.doesNotMatch(result.notes, /closes/i);
+    assert.doesNotMatch(result.notes, /issues\/(263|pro)\b/);
+  });
+
+  it("本文の Closes #12 も出さない。BREAKING CHANGE の節は参照の行の手前で切れたまま（パーサーの読み方は変えない）", async () => {
+    const r = repo([
+      "feat: 最初",
+      { tag: "v0.1.0" },
+      "feat: 形を変える (#7)\n\nBREAKING CHANGE: 設定の形が変わる\nCloses #13",
+      "fix: 閉じる (#8)\n\nCloses #12",
+    ]);
+    const result = await run(r);
+    assert.equal(result.version, "1.0.0");
+    const lines = result.notes.split("\n");
+    // 注記の行のすぐ後は空行（「Closes #13」が注記の本文に混ざらない）
+    const note = lines.indexOf("* 設定の形が変わる");
+    assert.ok(note > 0, result.notes);
+    assert.equal(lines[note + 1], "", result.notes);
+    for (const expected of [entry(r, "HEAD~1", "形を変える", 7), entry(r, "HEAD", "閉じる", 8)]) {
+      assert.ok(lines.includes(expected), `${expected}\n---\n${result.notes}`);
+    }
+    assert.doesNotMatch(result.notes, /closes/i);
+  });
+});
+
 describe("paths", () => {
   // アプリ・拡張機能・紹介ページ（web）・ドキュメントが 1 つのリポジトリにある形
   const monorepo = (...rest) =>
